@@ -1,98 +1,100 @@
+from pprint import pprint
 import numpy as np
+import control as ct
 
 
-class Parameters:
-    def __init__(self):
-        self.m = 0.56  # Масса маятника
+class Experiment:
+    def __init__(self) -> None:
+        self.m = 0.56
         self.M = 1.206  # Масса тележки
         self.I = 0.89  # Момент инерции относительно центра масс
         self.l = 0.1778  # Расстояние до центра масс
-        self.Kf = 1.726  # Конструктивный параметр (Kt)
+        self.Kt = 1.726  # Конструктивный параметр (Kt)
         self.Ks = 4.487  # Конструктивный параметр
         self.Beq = 5.4  # Коэффициент вязкого трения
         self.Bp = 1.4  # Коэффициент вязкого трения
         self.g = 9.81  # Ускорение свободного падения
 
+        self.A = self.create_A()
+        self.B = self.create_B()
 
-def continuous_system_coef(p: Parameters) -> tuple[np.ndarray, np.ndarray]:
-    denum = (p.I + p.m * p.l**2) * (p.m + p.M) - p.m**2 * p.l**2
-    
-    A = np.empty((4, 4))
-    A[0] = np.array([0, 0, 1, 0])
-    A[1] = np.array([0, 0, 0, 1])
-    A[2] = (
-        np.array(
+    def create_A(self) -> np.ndarray:
+        denom = (self.m + self.M) * (
+            self.I + self.m * self.l**2
+        ) - self.m**2 * self.l**2
+        A = np.array(
             [
-                (p.m + p.M) * p.m * p.g * p.l,
-                0,
-                -(p.m + p.M) * p.Bp,
-                -p.m * p.l * (p.Kf * p.Ks + p.Beq),
-            ]
+                [0, 0, 1, 0],
+                [0, 0, 0, 1],
+                [
+                    self.m * self.g * self.l * (self.m + self.M) / denom,
+                    0,
+                    -(self.m + self.M) * self.Bp / denom,
+                    -self.m * self.l * (self.Kt * self.Ks + self.Beq) / denom,
+                ],
+                [
+                    self.m**2 * self.g * self.l**2 / denom,
+                    0,
+                    -self.m * self.l * self.Bp / denom,
+                    -(self.Kt * self.Ks + self.Beq)
+                    * (self.I + self.m * self.l**2)
+                    / denom,
+                ],
+            ],
+            dtype=float,
         )
-        / denum
-    )
-    A[3] = (
-        np.array(
+        return A
+
+    def create_B(self) -> np.ndarray:
+        denom = (self.m + self.M) * (
+            self.I + self.m * self.l**2
+        ) - self.m**2 * self.l**2
+        B = np.array(
             [
-                p.m**2 * p.g * p.l**2,
-                0,
-                -p.m * p.l * p.Bp,
-                -(p.I + p.m * p.l**2) * (p.Kf * p.Ks + p.Beq),
-            ]
+                [0],
+                [0],
+                [self.m * self.l * self.Kt / denom],
+                [self.Kt * (self.I + self.m * self.l**2) / denom],
+            ],
+            dtype=float,
         )
-        / denum
-    )
-    
-    B = np.empty((4, 1))
-    B[:, 0] = np.array([0, 0, p.m * p.l * p.Kf, (p.I + p.m * p.l**2) * p.Kf]).T / denum
-    return A, B
+        return B
 
+    def lin_func(self, t: float, x: np.ndarray, theta: np.ndarray) -> np.ndarray:
+        return (self.A + self.B @ theta) @ x
 
-def linear_odefun_no_obs(x, t, A, B, theta):
-    return (A + B @ theta) @ x
+    def nonlin_func(self, t: float, x: np.ndarray, theta: np.ndarray) -> np.ndarray:
+        u = theta.reshape(4) @ x
+        denom = self.m**2 * self.l**2 * np.cos(x[0]) ** 2 - (
+            self.m + self.M
+        ) * (self.I + self.m * self.l**2)
+        temp_eq1 = (
+            self.Kt * (u - self.Ks * x[3])
+            - self.Beq * x[3]
+            - self.m * self.l * x[2] ** 2 * np.sin(x[0])
+        )
+        temp_eq2 = self.m * self.g * self.l * np.sin(x[0]) - self.Bp * x[2]
+        y = np.array(
+            [
+                x[2],
+                x[3],
+                -(
+                    self.m * self.l * temp_eq1 * np.cos(x[0])
+                    + (self.m + self.M) * temp_eq2
+                )
+                / denom,
+                -(
+                    self.m * self.l * np.cos(x[0]) * temp_eq2
+                    + (self.I + self.m * self.l**2) * temp_eq1
+                )
+                / denom,
+            ],
+            dtype=float,
+        )
+        return y
 
+    def ackermann_control(self, pref_eigvals: np.ndarray) -> np.ndarray:
+        theta = -ct.acker(self.A, self.B, pref_eigvals)
+        theta = theta.reshape((1, 4))
+        return theta
 
-def nonlinear_odefun_no_obs(x, t, p, theta):
-    u = theta @ x
-    denum = (p.I + p.m * p.l**2) * (p.m + p.M) - p.m**2 * p.l**2 * np.cos(x[0]) ** 2
-    # ---
-    dxdt = np.empty(x.shape[0])
-    dxdt[0] = x[2]
-    dxdt[1] = x[3]
-    dxdt[2] = (
-        p.m * (p.m + p.M) * p.g * p.l * np.sin(x[0])
-        + p.m * p.l * np.cos(x[0]) * p.Kf * u
-        - p.Bp * (p.m + p.M) * x[2]
-        - (p.Beq + p.Kf * p.Ks) * p.m * p.l * np.cos(x[0]) * x[3]
-        - p.m * p.l * np.cos(x[0]) * p.m * p.l**2 * x[2] ** 2 * np.sin(x[0])
-    ) / denum
-    dxdt[3] = (
-        p.Kf * (p.I + p.m * p.l**2) * u
-        - (p.Kf * p.Ks + p.Beq) * (p.I + p.m * p.l**2) * x[3]
-        - (p.I + p.m * p.l**2) * p.m * p.l**2 * x[2] ** 2 * np.sin(x[0])
-        - p.m * p.l * np.cos(x[0]) * p.Bp * x[2]
-        + p.m**2 * p.l**2 * p.g * np.sin(x[0]) * np.cos(x[0])
-    ) / denum
-    return dxdt
-
-
-def get_control_akkerman(A, B, desired_poly_coef):
-    n = A.shape[0]
-    # Матрица управляемости
-    C = np.empty((n, n))
-    C[:, 0] = B[:, 0]
-    for i in range(1, n):
-        C[:, i] = A @ C[:, i - 1]
-    # Характеристический полином
-    var = np.identity(n)
-    ch_poly = np.zeros((n, n))
-    for c in desired_poly_coef[::-1]:
-        ch_poly += var * c
-        var = var @ A
-    # Единичный вектор-строка
-    e_n = np.zeros((1, n))
-    e_n[0, -1] = 1
-    # Матрица обратной связи
-    theta = np.empty((1, n))
-    theta[0, :] = -e_n @ np.linalg.inv(C) @ ch_poly
-    return theta
