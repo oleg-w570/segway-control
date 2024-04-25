@@ -1,12 +1,12 @@
 import numpy as np
 from matplotlib import pyplot as plt
 
-from discrete_observer import DiscreteObserver
+from discrete_observer_system import DiscreteObserverSystem
 
 plt.style.use('seaborn-v0_8')
 
 h = 0.1
-obs = DiscreteObserver(h)
+obs = DiscreteObserverSystem(h)
 
 end_time = 20.0
 x0 = np.array([0.0, 0.01, -0.05, 0.01])

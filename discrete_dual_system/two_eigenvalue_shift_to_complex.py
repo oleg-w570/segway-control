@@ -1,12 +1,12 @@
 import numpy as np
 from matplotlib import pyplot as plt
 
-from discrete_dual_system import DiscreteDualSystem
+from discrete_observer import DiscreteObserver
 
 plt.style.use('seaborn-v0_8')
 
 h = 0.1
-s = DiscreteDualSystem(h)
+s = DiscreteObserver(h)
 eigA = np.linalg.eigvals(s.hatA)
 eigA = eigA.astype(complex)
 print(f"Eigenvalues of A = {eigA}")
