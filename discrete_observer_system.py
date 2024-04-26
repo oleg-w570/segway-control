@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.integrate import solve_ivp
 
-from discrete_dual_system import DiscreteObserver
+from discrete_observer import DiscreteObserver
 from discrete_system import DiscreteSystem
 
 

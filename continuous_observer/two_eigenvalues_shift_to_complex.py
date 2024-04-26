@@ -33,4 +33,4 @@ for i in range(4):
     axs[i].set_xlabel('$t$')
     axs[i].set_ylabel(ylabels[i])
 fig.tight_layout()
-plt.savefig("graph")
+plt.show()
